@@ -65,6 +65,10 @@ const Grilo = new Lang.Class({
         }
     },
 
+    populateArtists: function (offset, callback) {
+        this.populateItems (Query.artist, offset, callback)
+    },
+
     populateAlbums: function (offset, callback) {
         this.populateItems (Query.album, offset, callback)
     },
@@ -78,22 +82,20 @@ const Grilo = new Lang.Class({
         options.set_flags (Grl.ResolutionFlags.FULL | Grl.ResolutionFlags.IDLE_RELAY);
         options.set_skip (offset);
         options.set_count(50);
-        print ("populateItems:", query);
         grilo.tracker.query(
             query,
-                [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_ARTIST],
+                [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_ARTIST, Grl.METADATA_KEY_CREATION_DATE],
                 options,
                 Lang.bind(this, callback, null));
     },
 
     getAlbumSongs: function (album_id, callback) {
         var query =  Query.album_songs(album_id);
-        print ("getAlbumSongs:", query);
         var options = Grl.OperationOptions.new(null);
         options.set_flags (Grl.ResolutionFlags.FULL | Grl.ResolutionFlags.IDLE_RELAY);
         grilo.tracker.query(
             query,
-                [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_ARTIST],
+                [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_ARTIST, Grl.METADATA_KEY_CREATION_DATE],
                 options,
                 Lang.bind(this, callback, null));
     },

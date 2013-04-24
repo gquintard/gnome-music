@@ -40,92 +40,42 @@ const AlbumWidget = new Lang.Class({
     _init: function (player) {
         this.player = player;
         this.hbox = new Gtk.HBox ();
+        this.iterToClean = null;
         this.scrolledWindow = new Gtk.ScrolledWindow();
 
-        this.model = Gtk.ListStore.new([
-            GObject.TYPE_STRING,
-            GObject.TYPE_STRING,
-            GObject.TYPE_STRING,
-            GObject.TYPE_STRING,
-            GdkPixbuf.Pixbuf,
-            GObject.TYPE_OBJECT,
-            GObject.TYPE_BOOLEAN
-        ]);
+        this.ui = new Gtk.Builder();
+        this.ui.add_from_resource('/org/gnome/music/AlbumWidget.ui');
+        this.model = this.ui.get_object("AlbumWidget_model");
 
         this.view = new Gd.MainView({
             shadow_type:    Gtk.ShadowType.NONE
         });
         this.view.set_view_type(Gd.MainViewType.LIST);
-        this.view.set_model(this.model);
-
-        this.cover = new Gtk.Image();
-        this.vbox = new Gtk.VBox();
-        this.title_label = new Gtk.Label({label : ""});
-        this.artist_label = new Gtk.Label({label : ""});
-        this.running_length = 0;
-        this.released_label = new Gtk.Label()
-        this.released_label.set_markup ("<span color='grey'>Released</span>");
-        this.running_length_label = new Gtk.Label({});
-        this.running_length_label.set_markup ("<span color='grey'>Running Length</span>");
-        this.released_label_info = new Gtk.Label({label: "----"});
-        this.running_length_label_info = new Gtk.Label({label: "--:--"});
-        this.released_label.set_alignment(1.0, 0.5)
-        this.running_length_label.set_alignment(1.0, 0.5)
-        this.released_label_info.set_alignment(0.0, 0.5)
-        this.running_length_label_info.set_alignment(0.0, 0.5)
+        this.album=null;
+        this.view.connect('item-activated', Lang.bind(this,
+            function(widget, id, path) {
+                if (this.iterToClean && this.player.playlist_id == this.album){
+                    let item = this.model.get_value(this.iterToClean, 5);
+                    this.model.set_value(this.iterToClean, 0, item.get_title());
+                    // Hide now playing icon
+                    this.model.set_value(this.iterToClean, 3, false);
+                }
+                this.player.setPlaylist("Album", this.album, this.model, this.model.get_iter(path)[1], 5);
+                this.player.play();
+            })
+        );
 
         this.parent();
-        this.hbox.set_homogeneous(true);
-        this.vbox.set_homogeneous(false);
-        this.scrolledWindow.set_policy(
-            Gtk.PolicyType.NEVER,
-            Gtk.PolicyType.AUTOMATIC);
 
-        var vbox = new Gtk.VBox()
-        var hbox = new Gtk.Box()
-        hbox.homogeneous = true
-        var child_view = this.view.get_children()[0];
+        let view_box = this.ui.get_object("view");
+        let child_view = this.view.get_children()[0];
         this.view.remove(child_view)
-        hbox.pack_start(child_view, true, true, 0)
-        hbox.pack_start(new Gtk.Label(), true, true, 0)
+        view_box.add(child_view)
 
-        vbox.pack_start(new Gtk.Label(), false, false, 24)
-        vbox.pack_start(hbox, true, true, 0)
-        this.scrolledWindow.add(vbox);
-
-        this.infobox = new Gtk.Box()
-        this.infobox.homogeneous = true;
-        this.infobox.spacing = 36
-        var box = new Gtk.VBox();
-        box.pack_start (this.released_label, false, false, 0)
-        box.pack_start (this.running_length_label, false, false, 0)
-        this.infobox.pack_start(box, true, true, 0)
-        box = new Gtk.VBox();
-        box.pack_start (this.released_label_info, false, false, 0)
-        box.pack_start (this.running_length_label_info, false, false, 0)
-        this.infobox.pack_start(box, true, true, 0)
-
-        this.vbox.pack_start (new Gtk.Label({label:""}), false, false, 24);
-        this.vbox.pack_start (this.cover, false, false, 0);
-
-        let artistBox = new Gtk.VBox();
-        artistBox.set_spacing(6);
-        artistBox.pack_start (this.title_label, false, false, 0);
-        artistBox.pack_start (this.artist_label, false, false, 0);
-
-        this.vbox.pack_start (artistBox, false, false, 24);
-        this.vbox.pack_start(this.infobox, false, false, 0);
-
-        let hbox = new Gtk.Box();
-        hbox.pack_start(new Gtk.Label(), true, true, 0);
-        hbox.pack_end(this.vbox, false, false, 0);
-        this.hbox.pack_start (hbox, true, true, 32);
-        this.hbox.pack_start (this.scrolledWindow, true, true, 0);
-
-        this.get_style_context ().add_class ("view");
-        this.get_style_context ().add_class ("content-view");
-        this.add(this.hbox);
+        this.add(this.ui.get_object("AlbumWidget"));
         this._addListRenderers();
+        this.get_style_context().add_class("view");
+        this.get_style_context().add_class("content-view");
         this.show_all ();
     },
 
@@ -135,76 +85,285 @@ const AlbumWidget = new Lang.Class({
         var cols = listWidget.get_columns()
         var cells = cols[0].get_cells()
         cells[2].visible = false
+        cells[1].visible = false
+
+        let nowPlayingSymbolRenderer = new Gtk.CellRendererPixbuf({ xpad: 0 });
+        let path = "/usr/share/icons/gnome/scalable/actions/media-playback-start-symbolic.svg";
+        nowPlayingSymbolRenderer.pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, -1, 16, true);
+
+        var columnNowPlaying = new Gtk.TreeViewColumn();
+        nowPlayingSymbolRenderer.set_property("xalign", 1.0);
+        columnNowPlaying.pack_start(nowPlayingSymbolRenderer, false)
+        columnNowPlaying.set_property('fixed-width', 24)
+        columnNowPlaying.add_attribute(nowPlayingSymbolRenderer, "visible", 3);
+        listWidget.insert_column(columnNowPlaying, 0)
 
         let typeRenderer =
-            new Gd.StyledTextRenderer({ xpad: 0 });
+            new Gd.StyledTextRenderer({ xpad: 16 });
         typeRenderer.set_property("ellipsize", 3);
         typeRenderer.set_property("xalign", 0.0);
-        typeRenderer.set_property("expand", true);
+        // This function is not needed, just add the renderer!
         listWidget.add_renderer(typeRenderer, Lang.bind(this,
-            function(col, cell, model, iter) {
-                let item = model.get_value(iter, 5);
-                typeRenderer.text = item.get_title();
-            }));
+            function(col, cell, model, iter) {}
+        ));
+        cols[0].clear_attributes(typeRenderer);
+        cols[0].add_attribute(typeRenderer, "markup", 0);
 
         let durationRenderer =
             new Gd.StyledTextRenderer({ xpad: 16 });
         durationRenderer.add_class('dim-label');
         durationRenderer.set_property("ellipsize", 3);
         durationRenderer.set_property("xalign", 1.0);
-        durationRenderer.set_property("expand", true);
         listWidget.add_renderer(durationRenderer, Lang.bind(this,
             function(col, cell, model, iter) {
                 let item = model.get_value(iter, 5);
                 let duration = item.get_duration ();
-                var minutes = parseInt(duration / 60);
-                var seconds = duration % 60;
-                var time = null
-                if (seconds < 10)
-                    time =  minutes + ":0" + seconds;
-                else
-                    time = minutes + ":" + seconds;
-                durationRenderer.text = time;
+                if (!item)
+                    return;
+                durationRenderer.text = this.player.seconds_to_string(duration);
             }));
-
     },
-
     update: function (artist, album, item) {
-        var pixbuf = albumArtCache.lookup (256, artist, item.get_string(Grl.METADATA_KEY_ALBUM));
+        let released_date = item.get_publication_date();
+        if (released_date != null) {
+            this.ui.get_object("released_label_info").set_text(
+                released_date.get_year().toString());
+        }
         let duration = 0;
-        this.model.clear()
+        this.album = album;
+        // if the active queue has been set by this album,
+        // use it as model, otherwise build the liststore
+        let cachedPlaylist = this.player.runningPlaylist("Album", album);
+        if (cachedPlaylist){
+            this.model = cachedPlaylist;
+            this.updateModel(cachedPlaylist, this.player.currentTrack);
+        } else {
+            this.model = Gtk.ListStore.new([
+                GObject.TYPE_STRING, /*title*/
+                GObject.TYPE_STRING,
+                GObject.TYPE_STRING,
+                GObject.TYPE_BOOLEAN,/*icon shown*/
+                GdkPixbuf.Pixbuf,    /*icon*/
+                GObject.TYPE_OBJECT, /*song object*/
+                GObject.TYPE_BOOLEAN
+            ]);
         var tracks = [];
         grilo.getAlbumSongs(item.get_id(), Lang.bind(this, function (source, prefs, track) {
             if (track != null) {
                 tracks.push(track);
                 duration = duration + track.get_duration();
                 let iter = this.model.append();
+                let path = "/usr/share/icons/gnome/scalable/actions/media-playback-start-symbolic.svg";
+                let pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, -1, 16, true);
                 this.model.set(iter,
                     [0, 1, 2, 3, 4, 5],
-                    [ "", "", "", "", null, track]);
-                this.running_length_label_info.set_text((parseInt(duration/60) + 1) + " min");
+                    [ track.get_title(), "", "", false, pixbuf, track ]);
+                this.ui.get_object("running_length_label_info").set_text(
+                    (parseInt(duration/60) + 1) + " min");
             }
         }));
-
-        this.player.setPlaylist(tracks);
-        this.player.setCurrentTrack(tracks[0]);
-
+    }
+    this.view.set_model(this.model);
+        var pixbuf = albumArtCache.lookup (256, artist, item.get_string(Grl.METADATA_KEY_ALBUM));
         if (pixbuf == null) {
             let path = "/usr/share/icons/gnome/scalable/places/folder-music-symbolic.svg";
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, -1, 256, true);
         }
-        this.cover.set_from_pixbuf (pixbuf);
+        this.ui.get_object("cover").set_from_pixbuf (pixbuf);
 
-        this.setArtistLabel(artist);
-        this.setTitleLabel(album);
+        this.ui.get_object("artist_label").set_markup(artist);
+        this.ui.get_object("title_label").set_markup(album);
+        this.ui.get_object("released_label_info").set_text(item.get_creation_date().get_year().toString());
+
+        this.player.connect('playlist-item-changed', Lang.bind(this,
+            function(player, playlist, iter) { this.updateModel(playlist, iter);}
+        ));
+    },
+    updateModel: function(playlist, iter){
+        //this is not our playlist, return
+        if (playlist != this.model){
+            return true;}
+        if (this.iterToClean){
+            let next_iter = iter.copy();
+            do {
+                let item = this.model.get_value(next_iter, 5);
+                this.model.set_value(next_iter, 0, item.get_title());
+                // Hide now playing icon
+                this.model.set_value(next_iter, 3, false);
+            } while (this.model.iter_next(next_iter))
+        }
+        this.iterToClean = iter.copy();
+
+        // Highlight currently played song as bold
+        let item = this.model.get_value(iter, 5);
+        this.model.set_value(iter, 0, "<b>" + item.get_title() + "</b>");
+        // Display now playing icon
+        this.model.set_value(iter, 3, true);
+
+        // grey out previous items
+        let prev_iter = iter.copy();
+        while(this.model.iter_previous(prev_iter)){
+            let item = this.model.get_value(prev_iter, 5);
+            let title = "<span color='grey'>" + item.get_title() + "</span>";
+            this.model.set_value(prev_iter, 0, title);
+            this.model.set_value(prev_iter, 3, false);
+        }
+        return true;
+    },
+});
+
+const ArtistAlbums = new Lang.Class({
+    Name: "ArtistAlbumsWidget",
+    Extends: Gtk.VBox,
+
+    _init: function (artist, albums, player) {
+        this.player = player
+        this.artist = artist
+        this.albums = albums
+        this.parent();
+        this.ui = new Gtk.Builder();
+        this.ui.add_from_resource('/org/gnome/music/ArtistAlbumsWidget.ui');
+        this.set_border_width(0);
+        this.ui.get_object("artist").set_label(this.artist);
+        var tracks = [];
+        var widgets = [];
+
+        this.pack_start(this.ui.get_object("ArtistAlbumsWidget"), false, false, 0);
+        for (var i=0; i < albums.length; i++) {
+            let widget = new ArtistAlbumWidget(artist, albums[i], this.player, tracks)
+            this.pack_start(widget, false, false, 32);
+            widgets.push(widget);
+        }
+        this.show_all();
+
+        this.player.connect('song-changed', Lang.bind(this,
+            function(widget, id) {
+                let origin = tracks[id].origin;
+                let iter = tracks[id].iterator;
+                origin.setPlayingSong(iter);
+
+                //Remove markup from other albums
+                for (let i in widgets) {
+                    let albumwidget = widgets[i];
+                    if (albumwidget != origin) {
+                        albumwidget.setPlayingSong(-1);
+                    }
+                }
+            }
+        ));
+    },
+});
+
+const ArtistAlbumWidget = new Lang.Class({
+    Name: "ArtistAlbumWidget",
+    Extends: Gtk.HBox,
+
+    _init: function (artist, album, player, tracks) {
+        this.parent();
+        this.player = player;
+        this.album = album;
+        this.songs = [];
+
+        var track_count = album.get_childcount();
+
+        this.ui = new Gtk.Builder();
+        this.ui.add_from_resource('/org/gnome/music/ArtistAlbumWidget.ui');
+        this.model = this.ui.get_object("liststore1");
+
+        var pixbuf = albumArtCache.lookup (128, artist, album.get_title());
+        if (pixbuf == null) {
+            let path = "/usr/share/icons/gnome/scalable/places/folder-music-symbolic.svg";
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, -1, 128, true);
+        }
+
+        this.ui.get_object("cover").set_from_pixbuf(pixbuf);
+        this.ui.get_object("title").set_label(album.get_title());
+        if (album.get_creation_date()) {
+            this.ui.get_object("year").set_markup(
+                "<span color='grey'>(" + album.get_creation_date().get_year() + ")</span>");
+        }
+
+        grilo.getAlbumSongs(album.get_id(), Lang.bind(this, function (source, prefs, track) {
+            if (track != null) {
+                tracks.push(track);
+                track.origin = this;
+            }
+            else {
+                var titles = []
+                for (var i=0; i<tracks.length; i++) {
+                    track = tracks[i];
+                    if (titles.indexOf(track.get_title()) == -1) {
+                        titles.push(track.get_title())
+                        var ui = new Gtk.Builder();
+                        ui.add_from_resource('/org/gnome/music/TrackWidget.ui');
+                        var songWidget = ui.get_object("box1");
+                        this.songs.push(songWidget);
+                        ui.get_object("num").set_text(this.songs.length.toString());
+                        if (track.get_title() != null)
+                            ui.get_object("title").set_text(track.get_title());
+                        //var songWidget = ui.get_object("duration").set_text(track.get_title());
+                        ui.get_object("title").set_alignment(0.0, 0.5);
+                        this.ui.get_object("grid1").attach(songWidget,
+                            parseInt(i/(tracks.length/2)),
+                            parseInt((i)%(tracks.length/2)), 1, 1);
+                    }
+                }
+                this.ui.get_object("grid1").show_all();
+            }
+        }));
+
+        this.pack_start(this.ui.get_object("ArtistAlbumWidget"), true, true, 0);
+        this.show_all();
+
+        /*this.ui.get_object("iconview1").connect('item-activated', Lang.bind(
+            this, function(widget, path) {
+                var iter = this.model.get_iter (path)[1];
+                var item = this.model.get_value (iter, 5);
+                this.setPlayingSong(item.iterator);
+        }));
+        */
     },
 
-    setArtistLabel: function(artist) {
-        this.artist_label.set_markup("<b><span size='large' color='grey'>" + artist + "</span></b>");
-    },
+    setPlayingSong: function(iter) {
+        /*
+        if (iter == -1) {
+            // Remove markup completely
+            let new_iter = this.model.get_iter_first()[1];
+            let item = this.model.get_value(new_iter, 5);
+            this.model.set_value(new_iter, 0, item.get_title());
+            this.model.set_value(new_iter, 3, false);
+            while(this.model.iter_next(new_iter)){
+                let item = this.model.get_value(new_iter, 5);
+                this.model.set_value(new_iter, 0, item.get_title());
+                this.model.set_value(new_iter, 3, false);
+            }
+        } else {
+            // Highlight currently played song as bold
+            if (!iter)
+                return
+            let item = this.model.get_value(iter, 5);
+            let title = "<b>" + item.get_title() + "</b>";
+            this.model.set_value(iter, 0, title);
+            // Display now playing icon
+            this.model.set_value(iter, 3, true);
 
-    setTitleLabel: function(title) {
-        this.title_label.set_markup("<b><span size='large'>" + title + "</span></b>");
-    },
+            // Make all previous songs shadowed
+            let prev_iter = iter;
+            while(this.model.iter_previous(prev_iter)){
+                let item = this.model.get_value(prev_iter, 5);
+                let title = "<span color='grey'>" + item.get_title() + "</span>";
+                this.model.set_value(prev_iter, 0, title);
+                this.model.set_value(prev_iter, 3, false);
+            }
 
+            //Remove markup from the following songs
+            let next_iter = iter;
+            while(this.model.iter_next(next_iter)){
+                let item = this.model.get_value(next_iter, 5);
+                this.model.set_value(next_iter, 0, item.get_title());
+                this.model.set_value(next_iter, 3, false);
+            }
+        }
+        */
+    },
 });
